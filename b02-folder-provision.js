@@ -7,12 +7,16 @@
   const ROLES = ['root', 'ready', 'ledger', 'archive'];
   const NAMES = {root:'B02-Codex-Production',ready:'READY',ledger:'LEDGER',archive:'ARCHIVE'};
   const marker = role => 'b02-codex-production-v1-' + role;
+  const UNCERTAIN_KEY = 'B02FolderProvision_RemoteUncertain_v1';
   const $ = id => document.getElementById(id);
   const status = text => { $('result').textContent = text; };
   const validId = value => /^[A-Za-z0-9_-]{10,128}$/.test(value);
   let token = null;
   let busy = false;
   let writeStarted = false;
+  let remoteUncertain = false;
+  try { remoteUncertain = localStorage.getItem(UNCERTAIN_KEY) === '1'; }
+  catch { remoteUncertain = true; }
   try {
     const saved = JSON.parse(localStorage.getItem('B02Picker_Nonsecret_Settings_v1') || 'null');
     if (saved && typeof saved === 'object') {
@@ -66,6 +70,7 @@
     return info.id;
   }
   async function provision(config) {
+    if (remoteUncertain) throw Error('이전 생성 시도의 원격 상태가 미확인입니다. 별도 재조회 전 재생성하지 마세요.');
     const about = await api('about',{phase:'생성 전 계정 확인',operation:'about.get',params:{fields:'user(emailAddress)'}});
     if (typeof about.user?.emailAddress !== 'string' ||
         about.user.emailAddress.toLowerCase() !== config.email)
@@ -84,6 +89,9 @@
         ids[role] = verify(await meta(found[role][0].id,role),role,parent,config.legacy);
       } else {
         writeStarted = true;
+        // Persist before POST so a reload cannot silently retry an ambiguous write.
+        try { localStorage.setItem(UNCERTAIN_KEY, '1'); remoteUncertain = true; }
+        catch { throw Error('재시도 차단 상태를 저장할 수 없어 생성을 중단합니다.'); }
         const body = {name:NAMES[role],mimeType:FOLDER,
           appProperties:{b02_provision_role:marker(role)}};
         if (role !== 'root') body.parents = [parent];
@@ -97,6 +105,8 @@
         throw Error(role+' 최종 목록에서 정확히 1개가 확인되지 않았습니다.');
     }
     if (new Set(Object.values(ids)).size !== 4) throw Error('생성 폴더 ID가 중복됩니다.');
+    localStorage.removeItem(UNCERTAIN_KEY);
+    remoteUncertain = false;
     return ids;
   }
   $('start').addEventListener('click', () => {
@@ -119,7 +129,7 @@
             'root: '+ids.root+'\nREADY: '+ids.ready+'\nLEDGER: '+ids.ledger+'\nARCHIVE: '+ids.archive+'\n'+
             '원고 업로드·기존 폴더 변경·Work 경로 변경은 수행하지 않았습니다.');
         } catch(e) { status('중단: '+(e.message||'원격 검증 실패')+'\n결과가 불명확하면 같은 버튼을 즉시 다시 누르지 마세요.'); }
-        finally { token=null;busy=false;$('start').disabled=writeStarted; }
+        finally { token=null;busy=false;$('start').disabled=writeStarted || remoteUncertain; }
       }
     });
     try { client.requestAccessToken({prompt:'consent'}); }
@@ -128,7 +138,9 @@
   if (location.protocol !== 'https:' || !window.isSecureContext) status('중단: 신뢰하는 HTTPS 주소에서만 실행하세요.');
   else {
     const timer=setInterval(() => {
-      if (window.google?.accounts?.oauth2) { clearInterval(timer);$('start').disabled=false;status('준비됨. 입력값은 이 탭에서만 사용됩니다.'); }
+      if (window.google?.accounts?.oauth2) { clearInterval(timer);
+        $('start').disabled=remoteUncertain;
+        status(remoteUncertain ? '중단: 이전 생성 시도의 원격 상태가 미확인입니다. 표식·메타데이터를 별도 재조회하기 전에는 재생성하지 마세요.' : '준비됨. 입력값은 이 탭에서만 사용됩니다.'); }
     },200);
     setTimeout(() => { if ($('start').disabled) { clearInterval(timer);status('중단: Google 인증 라이브러리를 불러오지 못했습니다.'); } },15000);
   }
