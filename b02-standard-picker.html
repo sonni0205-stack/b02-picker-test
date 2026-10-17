@@ -30,7 +30,7 @@
   const status = message => { document.getElementById('settings-status').textContent = message; };
   const valid = values => {
     if (!values || typeof values !== 'object') return false;
-    if (!/^[0-9]+-[a-z0-9-]+\\.apps\\.googleusercontent\\.com$/.test(values.client || '')) return false;
+    if (!/^[0-9]+-[a-z0-9-]+\.apps\.googleusercontent\.com$/.test(values.client || '')) return false;
     if (!/^[0-9]{6,}$/.test(values.app || '')) return false;
     const folderIds = ['root', 'ready', 'ledger'].map(k => values[k]);
     return folderIds.every(v => typeof v === 'string' && /^[A-Za-z0-9_-]{10,100}$/.test(v))
