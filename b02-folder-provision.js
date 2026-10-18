@@ -2,6 +2,9 @@
 (() => {
   'use strict';
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+  // Browser-local state cannot prevent another device from creating a new plan.
+  // Keep direct creation OFF until a durable fixed-ID plan and single executor exist.
+  const CREATION_ENABLED = false;
   const BASE = 'https://www.googleapis.com/drive/v3/';
   const FOLDER = 'application/vnd.google-apps.folder';
   const ROLES = ['root', 'ready', 'ledger', 'archive'];
@@ -110,6 +113,7 @@
     return ids;
   }
   $('start').addEventListener('click', () => {
+    if (!CREATION_ENABLED) return status('REMOTE_STATE_UNVERIFIED: 직접 생성은 비활성입니다. 읽기 전용 진단과 고정 ID 계획을 먼저 확인하세요.');
     if (busy) return;
     let config;
     try { config=inputs(); } catch(e) { return status('중단: '+e.message); }
@@ -133,15 +137,16 @@
       }
     });
     try { client.requestAccessToken({prompt:'consent'}); }
-    catch { token=null;busy=false;$('start').disabled=false;status('중단: Google 인증 화면을 열지 못했습니다.'); }
+    catch { token=null;busy=false;$('start').disabled=!CREATION_ENABLED;status('중단: Google 인증 화면을 열지 못했습니다.'); }
   });
   if (location.protocol !== 'https:' || !window.isSecureContext) status('중단: 신뢰하는 HTTPS 주소에서만 실행하세요.');
   else {
     const timer=setInterval(() => {
       if (window.google?.accounts?.oauth2) { clearInterval(timer);
-        $('start').disabled=remoteUncertain;
-        status(remoteUncertain ? '중단: 이전 생성 시도의 원격 상태가 미확인입니다. 표식·메타데이터를 별도 재조회하기 전에는 재생성하지 마세요.' : '준비됨. 입력값은 이 탭에서만 사용됩니다.'); }
+        $('start').disabled=!CREATION_ENABLED || remoteUncertain;
+        status(!CREATION_ENABLED ? 'REMOTE_STATE_UNVERIFIED: 직접 생성은 비활성입니다. 읽기 전용 표식 진단으로 원격 상태를 확인하세요.' :
+          remoteUncertain ? '중단: 이전 생성 시도의 원격 상태가 미확인입니다. 표식·메타데이터를 별도 재조회하기 전에는 재생성하지 마세요.' : '준비됨. 입력값은 이 탭에서만 사용됩니다.'); }
     },200);
-    setTimeout(() => { if ($('start').disabled) { clearInterval(timer);status('중단: Google 인증 라이브러리를 불러오지 못했습니다.'); } },15000);
+    setTimeout(() => { if (!window.google?.accounts?.oauth2) { clearInterval(timer);status('중단: Google 인증 라이브러리를 불러오지 못했습니다.'); } },15000);
   }
 })();
