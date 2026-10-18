@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin"><title>B02 Drive 읽기 전용 진단</title>
+<style>body{font:16px/1.6 system-ui,sans-serif;max-width:38rem;margin:auto;padding:16px;color:#182437}label{display:block;margin:14px 0 5px}input,button{box-sizing:border-box;width:100%;padding:12px;font:inherit}button{margin-top:14px;background:#174ea6;color:white;border:0;border-radius:8px}button:disabled{background:#8997aa}#result{white-space:pre-wrap;overflow-wrap:anywhere;background:#edf3fc;padding:14px;border-radius:8px}.note{background:#fff4d6;padding:12px;border-radius:8px}</style></head>
+<body><h1>B02 폴더 생성 여부 진단</h1>
+<p class="note">동일한 B02 OAuth 웹 앱의 <code>drive.file</code>로 앱 표식만 조회합니다. 이 화면에는 폴더 생성·삭제·이동 요청이 없습니다. 목록 0건은 기존 404 당시 아무것도 생성되지 않았다는 증거가 아닙니다.</p>
+<label>기존 시험에 사용한 OAuth 웹 클라이언트 ID<input id="client" autocomplete="off" spellcheck="false"></label>
+<label>B02 Drive에 로그인한 Google 계정 이메일<input id="email" type="email" autocomplete="off" spellcheck="false"></label>
+<button id="diagnose" disabled>읽기 전용으로 네 폴더 표식 확인</button>
+<p id="result" role="status" aria-live="polite">Google 인증 라이브러리를 불러오는 중입니다.</p>
+<p class="note">결과가 중복·불완전·0건이면 생성 화면으로 이동하지 마세요. 액세스 토큰은 이 탭 메모리에서 조회 직후 지웁니다. 결과에는 응답 본문이나 토큰을 표시하지 않습니다.</p>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="./b02-folder-diagnostic.js" defer></script></body></html>

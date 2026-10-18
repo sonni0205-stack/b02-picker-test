@@ -7,12 +7,16 @@
   const ROLES = ['root', 'ready', 'ledger', 'archive'];
   const NAMES = {root:'B02-Codex-Production',ready:'READY',ledger:'LEDGER',archive:'ARCHIVE'};
   const marker = role => 'b02-codex-production-v1-' + role;
+  const UNCERTAIN_KEY = 'B02FolderProvision_RemoteUncertain_v1';
   const $ = id => document.getElementById(id);
   const status = text => { $('result').textContent = text; };
   const validId = value => /^[A-Za-z0-9_-]{10,128}$/.test(value);
   let token = null;
   let busy = false;
   let writeStarted = false;
+  let remoteUncertain = false;
+  try { remoteUncertain = localStorage.getItem(UNCERTAIN_KEY) === '1'; }
+  catch { remoteUncertain = true; }
   try {
     const saved = JSON.parse(localStorage.getItem('B02Picker_Nonsecret_Settings_v1') || 'null');
     if (saved && typeof saved === 'object') {
@@ -31,43 +35,46 @@
       throw Error('웹 클라이언트 ID·B02 Google 이메일·서로 다른 기존 폴더 ID 3개를 확인하세요.');
     return {client,email,legacy:new Set(legacy)};
   };
-  async function api(path, {method='GET',params={},body}={}) {
+  async function api(path, {method='GET',params={},body,phase='사전검사',operation='Drive API'}={}) {
     if (!token) throw Error('B02 OAuth 토큰이 없습니다.');
     const url = new URL(BASE + path);
     Object.entries(params).forEach(([k,v]) => url.searchParams.set(k,v));
     const headers = {Authorization:'Bearer '+token};
     if (body !== undefined) headers['Content-Type'] = 'application/json';
-    const response = await fetch(url, {method,headers,
-      body:body === undefined ? undefined : JSON.stringify(body),cache:'no-store'});
-    if (!response.ok) throw Error('Drive API 실패 (HTTP '+response.status+'). 생성 결과가 불명확할 수 있으므로 다시 누르지 말고 표식 재조회를 요청하세요.');
-    return response.json();
+    let response;
+    try { response = await fetch(url, {method,headers,
+      body:body === undefined ? undefined : JSON.stringify(body),cache:'no-store'}); }
+    catch { throw Error(phase+' / '+method+' '+operation+': 응답 없음. 원격 상태 미확인.'); }
+    if (!response.ok) throw Error(phase+' / '+method+' '+operation+': HTTP '+response.status+'. 원격 상태 미확인.');
+    try { return await response.json(); }
+    catch { throw Error(phase+' / '+method+' '+operation+': 응답 형식 오류. 원격 상태 미확인.'); }
   }
-  async function find(role) {
+  async function find(role, phase='생성 전 표식 조회') {
     const q = "appProperties has { key='b02_provision_role' and value='"+marker(role)+"' } and trashed = false";
-    const page = await api('files',{params:{q,fields:'nextPageToken,incompleteSearch,files(id,name,mimeType,parents,appProperties,trashed)',pageSize:'1000'}});
+    const page = await api('files',{phase,operation:'files.list ('+role+')',params:{q,fields:'nextPageToken,incompleteSearch,files(id,name,mimeType,parents,appProperties,trashed)',pageSize:'1000'}});
     if (!Array.isArray(page.files) || page.nextPageToken || page.incompleteSearch)
       throw Error('앱 생성 폴더 목록이 불완전합니다. 생성을 중단합니다.');
     return page.files;
   }
-  async function meta(id) {
+  async function meta(id,role) {
     if (!validId(id)) throw Error('원격 폴더 ID 형식이 올바르지 않습니다.');
-    return api('files/'+encodeURIComponent(id),{params:{fields:'id,name,mimeType,parents,appProperties,trashed'}});
+    return api('files/'+encodeURIComponent(id),{phase:'생성 후 재조회',operation:'files.get ('+role+')',params:{fields:'id,name,mimeType,parents,appProperties,trashed'}});
   }
   function verify(info,role,parent,legacy) {
     if (!validId(info?.id) || legacy.has(info.id) || info.name !== NAMES[role] ||
         info.mimeType !== FOLDER || info.trashed !== false ||
-        !Array.isArray(info.parents) || info.parents.length !== 1 || info.parents[0] !== parent ||
+        !Array.isArray(info.parents) || info.parents.length !== 1 ||
+        (role === 'root' ? !validId(info.parents[0]) || legacy.has(info.parents[0]) : info.parents[0] !== parent) ||
         info.appProperties?.b02_provision_role !== marker(role))
       throw Error(role+' 폴더의 ID·부모·유형·앱 표식 재조회가 일치하지 않습니다.');
     return info.id;
   }
   async function provision(config) {
-    const about = await api('about',{params:{fields:'user(emailAddress)'}});
+    if (remoteUncertain) throw Error('이전 생성 시도의 원격 상태가 미확인입니다. 별도 재조회 전 재생성하지 마세요.');
+    const about = await api('about',{phase:'생성 전 계정 확인',operation:'about.get',params:{fields:'user(emailAddress)'}});
     if (typeof about.user?.emailAddress !== 'string' ||
         about.user.emailAddress.toLowerCase() !== config.email)
       throw Error('로그인한 Google 계정이 입력한 B02 Drive 계정과 다릅니다.');
-    const myRoot = (await api('files/root',{params:{fields:'id'}})).id;
-    if (!validId(myRoot)) throw Error('My Drive 루트 ID를 확인하지 못했습니다.');
     const found = {};
     for (const role of ROLES) {
       found[role] = await find(role);
@@ -77,23 +84,29 @@
       throw Error('앱 root 없이 하위 폴더 표식이 있어 생성을 중단합니다.');
     const ids = {};
     for (const role of ROLES) {
-      const parent = role === 'root' ? myRoot : ids.root;
+      const parent = role === 'root' ? null : ids.root;
       if (found[role].length) {
-        ids[role] = verify(await meta(found[role][0].id),role,parent,config.legacy);
+        ids[role] = verify(await meta(found[role][0].id,role),role,parent,config.legacy);
       } else {
         writeStarted = true;
-        const created = await api('files',{method:'POST',params:{fields:'id'},body:{
-          name:NAMES[role],mimeType:FOLDER,parents:[parent],
-          appProperties:{b02_provision_role:marker(role)}}});
-        ids[role] = verify(await meta(created.id),role,parent,config.legacy);
+        // Persist before POST so a reload cannot silently retry an ambiguous write.
+        try { localStorage.setItem(UNCERTAIN_KEY, '1'); remoteUncertain = true; }
+        catch { throw Error('재시도 차단 상태를 저장할 수 없어 생성을 중단합니다.'); }
+        const body = {name:NAMES[role],mimeType:FOLDER,
+          appProperties:{b02_provision_role:marker(role)}};
+        if (role !== 'root') body.parents = [parent];
+        const created = await api('files',{phase:'생성 요청',operation:'files.create ('+role+')',method:'POST',params:{fields:'id'},body});
+        ids[role] = verify(await meta(created.id,role),role,parent,config.legacy);
       }
     }
     for (const role of ROLES) {
-      const items = await find(role);
+      const items = await find(role,'생성 후 최종 표식 조회');
       if (items.length !== 1 || items[0].id !== ids[role])
         throw Error(role+' 최종 목록에서 정확히 1개가 확인되지 않았습니다.');
     }
     if (new Set(Object.values(ids)).size !== 4) throw Error('생성 폴더 ID가 중복됩니다.');
+    localStorage.removeItem(UNCERTAIN_KEY);
+    remoteUncertain = false;
     return ids;
   }
   $('start').addEventListener('click', () => {
@@ -116,7 +129,7 @@
             'root: '+ids.root+'\nREADY: '+ids.ready+'\nLEDGER: '+ids.ledger+'\nARCHIVE: '+ids.archive+'\n'+
             '원고 업로드·기존 폴더 변경·Work 경로 변경은 수행하지 않았습니다.');
         } catch(e) { status('중단: '+(e.message||'원격 검증 실패')+'\n결과가 불명확하면 같은 버튼을 즉시 다시 누르지 마세요.'); }
-        finally { token=null;busy=false;$('start').disabled=writeStarted; }
+        finally { token=null;busy=false;$('start').disabled=writeStarted || remoteUncertain; }
       }
     });
     try { client.requestAccessToken({prompt:'consent'}); }
@@ -125,7 +138,9 @@
   if (location.protocol !== 'https:' || !window.isSecureContext) status('중단: 신뢰하는 HTTPS 주소에서만 실행하세요.');
   else {
     const timer=setInterval(() => {
-      if (window.google?.accounts?.oauth2) { clearInterval(timer);$('start').disabled=false;status('준비됨. 입력값은 이 탭에서만 사용됩니다.'); }
+      if (window.google?.accounts?.oauth2) { clearInterval(timer);
+        $('start').disabled=remoteUncertain;
+        status(remoteUncertain ? '중단: 이전 생성 시도의 원격 상태가 미확인입니다. 표식·메타데이터를 별도 재조회하기 전에는 재생성하지 마세요.' : '준비됨. 입력값은 이 탭에서만 사용됩니다.'); }
     },200);
     setTimeout(() => { if ($('start').disabled) { clearInterval(timer);status('중단: Google 인증 라이브러리를 불러오지 못했습니다.'); } },15000);
   }
