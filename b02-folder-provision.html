@@ -3,13 +3,14 @@
 <meta name="referrer" content="strict-origin-when-cross-origin"><title>B02 전용 Drive 폴더 생성</title>
 <style>body{font:16px/1.6 system-ui,sans-serif;max-width:38rem;margin:auto;padding:16px;color:#182437}label{display:block;margin:14px 0 5px}input,button{box-sizing:border-box;width:100%;padding:12px;font:inherit}button{margin-top:14px;background:#174ea6;color:white;border:0;border-radius:8px}button:disabled{background:#8997aa}#result{white-space:pre-wrap;overflow-wrap:anywhere;background:#edf3fc;padding:14px;border-radius:8px}.note{background:#fff4d6;padding:12px;border-radius:8px}</style></head>
 <body><h1>B02 전용 폴더 4개 생성·재조회</h1>
+<p class="note">현재 직접 생성은 비활성입니다. 과거 HTTP 404 이후 원격 상태가 확정되지 않았습니다. <a href="./b02-folder-diagnostic.html">읽기 전용 앱 표식 진단</a>만 이용하세요.</p>
 <p class="note">사용자가 승인한 <b>새 B02 root·READY·LEDGER·ARCHIVE 폴더</b>만 대상으로 합니다. 기존 READY, 발행기록, B01, 게시물, Work 경로는 건드리지 않습니다. 같은 Google 계정·OAuth 앱에서 <code>drive.file</code>만 사용합니다. 토큰·이메일·폴더 ID는 서버나 브라우저 저장소에 보관하지 않습니다.</p>
 <label>기존 시험에 사용한 OAuth 웹 클라이언트 ID<input id="client" autocomplete="off" spellcheck="false"></label>
 <label>B02 Drive에 로그인한 Google 계정 이메일<input id="email" type="email" autocomplete="off" spellcheck="false"></label>
 <label>기존 B02 root 폴더 ID (중복 채택 차단용)<input id="legacy-root" autocomplete="off"></label>
 <label>기존 READY 폴더 ID<input id="legacy-ready" autocomplete="off"></label>
 <label>기존 발행기록 폴더 ID<input id="legacy-ledger" autocomplete="off"></label>
-<button id="start" disabled>계정·기존 생성물 확인 후 필요한 폴더만 생성</button>
+<button id="start" disabled>원격 상태 확인 전 생성 비활성</button>
 <p id="result" role="status" aria-live="polite">Google 인증 라이브러리를 불러오는 중입니다.</p>
 <p class="note">결과가 불확실하면 버튼을 즉시 다시 누르지 마세요. 앱 표식 재조회로 확인한 뒤 진행합니다. 성공 보고에는 생성된 ID·부모·유형 확인 결과만 표시합니다. 액세스 토큰은 탭 메모리에서 즉시 지웁니다.</p>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
