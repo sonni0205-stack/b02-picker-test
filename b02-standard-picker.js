@@ -106,7 +106,7 @@
     $('read').disabled = true;
     try {
       const c = config();
-      if (selected.size !== 3 || !['root', 'ready', 'ledger'].every(k => selected.get(k) === c[k]))
+      if (!['root', 'ready', 'ledger'].every(k => selected.get(k) === c[k]))
         throw Error('root·READY·발행기록 폴더를 각각 Picker에서 선택해야 합니다.');
       const folders = {};
       for (const k of ['root', 'ready', 'ledger']) {
