@@ -11,7 +11,7 @@ const ids = {
   child: 'childFolder123456', other: 'otherFolder123456',
 };
 
-function harness({parent = ids.ready, authorized = true, http = 200} = {}) {
+function harness({parent = ids.ready, authorized = true, http = 200, legacy = false} = {}) {
   const listeners = {};
   const elements = {};
   for (const name of ['client', 'key', 'app', 'root', 'ready', 'ledger', 'target', 'pick', 'read', 'read-child', 'clear', 'result']) {
@@ -54,7 +54,22 @@ function harness({parent = ids.ready, authorized = true, http = 200} = {}) {
     async fetch(url, options) {
       fetches++;
       assert.equal(options.headers.Authorization, 'Bearer SECRET_TOKEN');
-      assert.equal(new URL(url).pathname, `/drive/v3/files/${ids.child}`);
+      const parsed = new URL(url);
+      if (legacy) {
+        const fileId = parsed.pathname.split('/').at(-1);
+        const item = {
+          [ids.root]: {id: ids.root, mimeType: 'application/vnd.google-apps.folder'},
+          [ids.ready]: {id: ids.ready, mimeType: 'application/vnd.google-apps.folder', parents: [ids.root]},
+          [ids.ledger]: {id: ids.ledger, mimeType: 'application/vnd.google-apps.folder', parents: [ids.root]},
+          packageFolder123: {id: 'packageFolder123', mimeType: 'application/vnd.google-apps.folder', parents: [ids.ready]},
+        }[fileId];
+        const children = parsed.searchParams.get('q')?.includes(ids.ready)
+          ? [item || {id: 'packageFolder123', mimeType: 'application/vnd.google-apps.folder'}]
+          : ['post.json', 'review.json', 'manifest.json', 'one.png', 'two.png'].map((name, index) => ({id: `file${index}123456789`, name, size: 16}));
+        return {ok: true, status: 200, async json() { return parsed.pathname.endsWith('/files') ? {files: children} : item; },
+          async arrayBuffer() { return new Uint8Array([1, 2, 3]).buffer; }};
+      }
+      assert.equal(parsed.pathname, `/drive/v3/files/${ids.child}`);
       return {ok: http === 200, status: http,
         async json() { return {id: ids.child, mimeType: 'application/vnd.google-apps.folder', parents: [parent], isAppAuthorized: authorized}; }};
     },
@@ -107,6 +122,17 @@ test('Existing folder selection rejects an unexpected callback ID', () => {
   const h = harness(); h.elements.target.value = 'ready'; h.pick('picked', ids.other);
   assert.match(h.elements.result.textContent, /^중단:/);
   assert.equal(h.elements.read.disabled, true);
+});
+
+test('Existing package read remains available after the optional child selection', async () => {
+  const h = harness({legacy: true});
+  for (const target of ['root', 'ready', 'ledger']) {
+    h.elements.target.value = target;
+    h.pick('picked', ids[target]);
+  }
+  h.elements.target.value = 'child'; h.pick();
+  await h.listeners['read:click']();
+  assert.match(h.elements.result.textContent, /패키지 JSON·PNG 읽기에 성공/);
 });
 
 test('Read-only GET verifies exact READY parent and app authorization', async () => {
