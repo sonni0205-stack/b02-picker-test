@@ -35,12 +35,20 @@
       const view = new google.picker.DocsView(google.picker.ViewId.FOLDERS)
         .setIncludeFolders(true).setSelectFolderEnabled(true)
         .setMode(google.picker.DocsViewMode.LIST);
+      if (target === 'child') view.setParent(c.ready);
       const picker = new google.picker.PickerBuilder().addView(view)
         .setOAuthToken(accessToken).setDeveloperKey(c.key).setAppId(c.app)
         .setOrigin(location.origin).setCallback(data => {
           if (data[google.picker.Response.ACTION] !== google.picker.Action.PICKED) return;
           const docs = data[google.picker.Response.DOCUMENTS] || [];
           const chosen = docs.length === 1 && docs[0][google.picker.Document.ID];
+          if (target === 'child') {
+            if (!id(chosen) || [c.root, c.ready, c.ledger].includes(chosen))
+              return fail('READY 하위 폴더를 선택하지 않았습니다.');
+            selected.set('child', chosen); // This ID stays in memory; never render or persist it.
+            $('read-child').disabled = false;
+            return status('READY 하위 폴더 선택 결과를 받았습니다. 접근 권한은 아직 미검증입니다.');
+          }
           if (chosen !== c[target]) return fail('선택한 폴더가 입력한 B02 대상 ID와 다릅니다.');
           selected.set(target, chosen);
           $('read').disabled = false;
@@ -60,6 +68,7 @@
         activeConfig = c;
         selected.clear();
         $('read').disabled = true;
+        $('read-child').disabled = true;
         showPicker();
       }
     });
@@ -75,7 +84,7 @@
   }
   async function meta(fileId) {
     return (await (await drive('files/' + encodeURIComponent(fileId),
-      {fields: 'id,name,mimeType,parents,size,capabilities(canListChildren)'})).json());
+      {fields: 'id,name,mimeType,parents,size,isAppAuthorized,capabilities(canListChildren)'})).json());
   }
   async function children(parentId) {
     const rows = [];
@@ -129,9 +138,29 @@
     } catch (e) { fail(e.message || '읽기 검증에 실패했습니다.'); }
     finally { busy = false; $('read').disabled = !accessToken; }
   }
+  async function readChild() {
+    if (busy) return;
+    busy = true;
+    $('read-child').disabled = true;
+    try {
+      const c = config();
+      if (!activeConfig || Object.keys(c).some(k => c[k] !== activeConfig[k]))
+        throw Error('연결 중 입력값이 바뀌었습니다. 토큰을 지운 뒤 다시 시작하세요.');
+      const childId = selected.get('child');
+      if (!childId || !id(childId)) throw Error('READY 하위 폴더를 Picker에서 먼저 선택하세요.');
+      const folder = await meta(childId); // Read-only GET, performed only after the user presses the test button.
+      if (folder.id !== childId || folder.mimeType !== FOLDER || !folder.parents?.includes(c.ready))
+        throw Error('선택한 폴더가 지정한 READY 바로 아래에 있는지 확인할 수 없습니다.');
+      if (folder.isAppAuthorized !== true)
+        throw Error('폴더를 읽었지만 앱 접근 허용 여부가 확인되지 않았습니다.');
+      status('선택한 READY 하위 폴더의 직접 조회와 부모·앱 접근 확인에 성공했습니다. 내부 파일 및 GitHub Actions Refresh Token 접근은 별도 검증이 필요합니다.');
+    } catch (e) { fail(e.message || '하위 폴더 읽기 검증에 실패했습니다.'); }
+    finally { busy = false; $('read-child').disabled = !accessToken || !selected.has('child'); }
+  }
   $('pick').addEventListener('click', startPicker);
+  $('read-child').addEventListener('click', readChild);
   $('read').addEventListener('click', readSelected);
-  $('clear').addEventListener('click', () => { accessToken = null; activeConfig = null; selected.clear(); $('read').disabled = true; status('이 탭의 토큰과 선택 결과를 지웠습니다.'); });
+  $('clear').addEventListener('click', () => { accessToken = null; activeConfig = null; selected.clear(); $('read').disabled = true; $('read-child').disabled = true; status('이 탭의 토큰과 선택 결과를 지웠습니다.'); });
   if (location.protocol !== 'https:' || !window.isSecureContext) {
     fail('HTTPS 보안 주소에서만 실행합니다. 파일 다운로드 미리보기·제3자 HTML 뷰어에서는 실행하지 마세요.');
   } else {
