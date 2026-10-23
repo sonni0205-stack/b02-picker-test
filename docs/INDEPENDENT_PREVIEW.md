@@ -25,7 +25,7 @@ GitHub Pages는 저장소별 프로젝트 경로를 쓰며 같은 사용자 도�
 ## 배포 전 계정 설정 확인 항목
 
 1. 사용자 확인 사항: OAuth 웹 클라이언트의 승인된 JavaScript 원본에 `https://sonni0205-stack.github.io`가 등록됨. 별도 프로젝트 경로도 같은 원본을 사용한다.
-2. **아직 계정에서 확인되지 않은 사항:** 기존 API 키의 웹사이트 제한이 새 경로와 `https://docs.google.com/*`를 허용하는지, API 제한에 Google Picker API가 포함되는지. 키가 기존 `/b02-picker-test/*` 경로에만 제한됐다면 새 경로는 실패할 수 있다. 이 경우 설정 변경 승인을 별도로 받으며 키를 코드·채팅·PR에 넣지 않는다.
+2. **아직 계정에서 확인되지 않은 사항:** 사용자가 저장했다고 확인한 웹사이트 제한 `https://sonni0205-stack.github.io/*`와 함께 `https://docs.google.com/*`도 허용되는지, API 제한에 Google Picker API와 이 페이지가 직접 호출하는 Google Drive API가 모두 포함되는지. Google Picker 공식 웹 안내에 따르면 `docs.google.com`이 빠지면 키 오류가 날 수 있다. 실제 키 설정을 읽을 권한이 없으므로 이 조건이 확인되기 전에는 독립 사이트를 배포하지 않는다. 설정 변경이 필요하면 별도 승인을 받으며 키를 코드·채팅·PR에 넣지 않는다.
 3. 시험은 사용자가 갤럭시에서 Google 공식 인증을 통해 직접 수행한다. Picker 선택과 Drive GET은 사용자가 명시적으로 누른 뒤에만 진행한다. OAuth Refresh Token 및 GitHub Secrets는 변경하지 않는다.
 
 ## 현재 검증 한계
