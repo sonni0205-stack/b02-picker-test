@@ -20,6 +20,18 @@
         new Set([c.root, c.ready, c.ledger]).size !== 3) throw Error('클라이언트 ID·제한 API 키·프로젝트 번호·서로 다른 폴더 ID를 확인하세요.');
     return c;
   };
+  const currentConfig = () => {
+    try {
+      const c = config();
+      return activeConfig && Object.keys(c).every(k => c[k] === activeConfig[k]) ? c : null;
+    } catch (_) { return null; }
+  };
+  function updateReadButtons() {
+    const c = currentConfig();
+    $('read').disabled = busy || !accessToken || !c ||
+      !['root', 'ready', 'ledger'].every(k => selected.get(k) === c[k]);
+    $('read-child').disabled = busy || !accessToken || !c || !id(selected.get('child'));
+  }
   const ready = () => Boolean(window.google?.accounts?.oauth2 && window.google?.picker && pickerReady);
   function startPicker() {
     if (busy) return;
@@ -46,12 +58,12 @@
             if (!id(chosen) || [c.root, c.ready, c.ledger].includes(chosen))
               return fail('READY 하위 폴더를 선택하지 않았습니다.');
             selected.set('child', chosen); // This ID stays in memory; never render or persist it.
-            $('read-child').disabled = false;
+            updateReadButtons();
             return status('READY 하위 폴더 선택 결과를 받았습니다. 접근 권한은 아직 미검증입니다.');
           }
           if (chosen !== c[target]) return fail('선택한 폴더가 입력한 B02 대상 ID와 다릅니다.');
           selected.set(target, chosen);
-          $('read').disabled = false;
+          updateReadButtons();
           status(`${target} 폴더 선택 콜백을 받았습니다. 아직 Drive API 접근은 미검증입니다. 읽기 검사를 누르세요.`);
         }).build();
       picker.setVisible(true);
@@ -67,8 +79,7 @@
         accessToken = response.access_token;
         activeConfig = c;
         selected.clear();
-        $('read').disabled = true;
-        $('read-child').disabled = true;
+        updateReadButtons();
         showPicker();
       }
     });
@@ -106,7 +117,7 @@
     $('read').disabled = true;
     try {
       const c = config();
-      if (!['root', 'ready', 'ledger'].every(k => selected.get(k) === c[k]))
+      if (!currentConfig() || !['root', 'ready', 'ledger'].every(k => selected.get(k) === c[k]))
         throw Error('root·READY·발행기록 폴더를 각각 Picker에서 선택해야 합니다.');
       const folders = {};
       for (const k of ['root', 'ready', 'ledger']) {
@@ -136,7 +147,7 @@
       }
       status('새 OAuth 연결으로 B02 폴더 3개 메타데이터와 READY 패키지 JSON·PNG 읽기에 성공했습니다. 이 결과는 이 브라우저의 일회성 토큰에만 해당하며, GitHub Actions OAuth/refresh token과 제작 활성화는 별도 검증이 필요합니다.');
     } catch (e) { fail(e.message || '읽기 검증에 실패했습니다.'); }
-    finally { busy = false; $('read').disabled = !accessToken; }
+    finally { busy = false; updateReadButtons(); }
   }
   async function readChild() {
     if (busy) return;
@@ -155,12 +166,14 @@
         throw Error('폴더를 읽었지만 앱 접근 허용 여부가 확인되지 않았습니다.');
       status('선택한 READY 하위 폴더의 직접 조회와 부모·앱 접근 확인에 성공했습니다. 내부 파일 및 GitHub Actions Refresh Token 접근은 별도 검증이 필요합니다.');
     } catch (e) { fail(e.message || '하위 폴더 읽기 검증에 실패했습니다.'); }
-    finally { busy = false; $('read-child').disabled = !accessToken || !selected.has('child'); }
+    finally { busy = false; updateReadButtons(); }
   }
   $('pick').addEventListener('click', startPicker);
   $('read-child').addEventListener('click', readChild);
   $('read').addEventListener('click', readSelected);
-  $('clear').addEventListener('click', () => { accessToken = null; activeConfig = null; selected.clear(); $('read').disabled = true; $('read-child').disabled = true; status('이 탭의 토큰과 선택 결과를 지웠습니다.'); });
+  for (const field of ['client', 'key', 'app', 'root', 'ready', 'ledger'])
+    $(field).addEventListener('input', updateReadButtons);
+  $('clear').addEventListener('click', () => { accessToken = null; activeConfig = null; selected.clear(); updateReadButtons(); status('이 탭의 토큰과 선택 결과를 지웠습니다.'); });
   if (location.protocol !== 'https:' || !window.isSecureContext) {
     fail('HTTPS 보안 주소에서만 실행합니다. 파일 다운로드 미리보기·제3자 HTML 뷰어에서는 실행하지 마세요.');
   } else {
