@@ -108,14 +108,29 @@ test('Parent folder cannot be accepted as the READY child', () => {
   assert.equal(h.elements['read-child'].disabled, true);
 });
 
-test('Existing root, READY, and ledger selections still enable the original read action', () => {
+test('Original read action unlocks only after all three distinct folders are selected', () => {
   const h = harness();
   for (const target of ['root', 'ready', 'ledger']) {
     h.elements.target.value = target;
     h.pick('picked', ids[target]);
-    assert.equal(h.elements.read.disabled, false);
+    assert.equal(h.elements.read.disabled, target !== 'ledger');
   }
   assert.equal(h.fetchCount(), 0);
+});
+
+test('Editing a folder ID disables both actions without exposing prior selection', () => {
+  const h = harness();
+  for (const target of ['root', 'ready', 'ledger']) {
+    h.elements.target.value = target; h.pick('picked', ids[target]);
+  }
+  h.elements.target.value = 'child'; h.pick();
+  assert.equal(h.elements.read.disabled, false);
+  assert.equal(h.elements['read-child'].disabled, false);
+  h.elements.ready.value = ids.other;
+  h.listeners['ready:input']();
+  assert.equal(h.elements.read.disabled, true);
+  assert.equal(h.elements['read-child'].disabled, true);
+  assert.doesNotMatch(h.elements.result.textContent, /SECRET_TOKEN|childFolder123456/);
 });
 
 test('Existing folder selection rejects an unexpected callback ID', () => {
