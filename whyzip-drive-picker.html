@@ -48,7 +48,7 @@ small{font-size:12px}
 <p class="muted">Drive 접근 요청 범위: <code>drive.file</code> (기존 YouTube 인증과 별개). 브라우저용 임시 액세스 토큰만 사용합니다.</p>
 <div class="status" id="status" role="status" aria-live="polite">Google 라이브러리를 불러오는 중...</div>
 </div>
-<p class="muted">성공하면 폴더 ID, 비공개 상태, 폴더에 파일을 추가할 수 있는지 <b>읽기 전용</b>으로 확인합니다. 이 결과만으로 GitHub Actions의 장기 Drive OAuth나 실제 파일 업로드가 검증되는 것은 아닙니다.</p>
+<p class="muted">기존 폴더를 직접 지정하는 Google Picker 방식으로 선택 권한을 요청합니다. 성공하면 폴더 ID, 비공개 상태, 폴더에 파일을 추가할 수 있는지 <b>읽기 전용</b>으로 확인합니다. 이 결과만으로 GitHub Actions의 장기 Drive OAuth나 실제 파일 업로드가 검증되는 것은 아닙니다.</p>
 <p class="muted"><a href="oauth-hub/privacy.html">공통 개인정보처리방침</a> · <a href="oauth-hub/terms.html">이용약관</a></p>
 </main>
 <script>
@@ -88,6 +88,7 @@ function begin(){
     try{
       const view=new google.picker.DocsView(google.picker.ViewId.FOLDERS)
         .setIncludeFolders(true).setSelectFolderEnabled(true)
+        .setFileIds(FOLDER_ID)
         .setMode(google.picker.DocsViewMode.LIST);
       const picker=new google.picker.PickerBuilder()
         .setOAuthToken(accessToken)
@@ -109,10 +110,19 @@ function begin(){
           try{
             const url=new URL("https://www.googleapis.com/drive/v3/files/"+encodeURIComponent(FOLDER_ID));
             url.searchParams.set("fields","id,name,mimeType,trashed,shared,capabilities(canAddChildren)");
+            url.searchParams.set("supportsAllDrives","true");
             const response=await fetch(url.toString(),{method:"GET",cache:"no-store",
               headers:{"Authorization":"Bearer "+accessToken,"x-goog-user-project":PROJECT_ID}});
             if(myNonce!==nonce)return;
-            if(!response.ok)throw Error("Drive API 조회 실패 (HTTP "+response.status+"). 폴더 선택 권한 및 API 사용 상태를 확인하세요.");
+            if(!response.ok){
+              const payload=await response.json().catch(()=>({}));
+              const reason=String(payload?.error?.errors?.[0]?.reason||"unclassified").replace(/[^a-zA-Z0-9_-]/g,"").slice(0,40);
+              if(response.status===404){
+                status("WHYZIP_FOLDER_PICKED_VERIFY_PENDING\n기존 WHYZIP 폴더 선택은 확인됐습니다. 그러나 이 Drive 인증에는 폴더 조회 권한이 아직 반영되지 않았습니다. (HTTP 404 / "+reason+")\n폴더 삭제나 API 키 오류로 확정할 수 없습니다.\nGoogle 계정·OAuth·Cloud 설정을 반복 생성하지 마세요. 실제 파일 업로드/YouTube 게시는 실행하지 않았습니다.");
+                return;
+              }
+              throw Error("Drive API 조회 실패 (HTTP "+response.status+" / "+reason+").");
+            }
             const meta=await response.json();
             if(myNonce!==nonce)return;
             if(meta.id!==FOLDER_ID||meta.name!=="WHYZIP"||meta.mimeType!==FOLDER_MIME||meta.trashed!==false)
@@ -143,8 +153,8 @@ function begin(){
       },
       error_callback:function(){if(myNonce===nonce){busy=false;$("connect").disabled=false;error("Google 인증 팝업이 닫혔거나 차단됐습니다.");}}
     });
-    client.requestAccessToken({prompt:"consent"});
-    status("Google 계정에서 Drive 폴더 선택 권한을 확인해 주세요.");
+    client.requestAccessToken({prompt:""});
+    status("Google 계정에서 Drive 폴더 선택 권한을 확인해 주세요. 이미 승인했다면 동의 없이 진행될 수 있습니다.");
   }catch(e){busy=false;$("connect").disabled=false;error("Google 로그인 화면을 열지 못했습니다.");}
 }
 $("forget").addEventListener("click",clean);
